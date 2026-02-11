@@ -66,10 +66,13 @@ jobs:
             echo "tag_name=${TAG_NAME}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build release artifacts
+      - name: Build debug and release artifacts
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon clean :app:assembleRelease :Bcore:assembleRelease \
+          ./gradlew --no-daemon clean \
+            :app:assembleDebug \
+            :app:assembleRelease \
+            :Bcore:assembleRelease \
             -PciVersionName="${{ steps.meta.outputs.version_name }}" \
             -PciVersionCode="${{ steps.meta.outputs.version_code }}"
 
@@ -78,6 +81,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-artifacts/guest-image
 
+          find app/build/outputs/apk/debug -name '*.apk' -exec cp {} release-artifacts/ \;
           find app/build/outputs/apk/release -name '*.apk' -exec cp {} release-artifacts/ \;
           find Bcore/build/outputs/aar -name '*release.aar' -exec cp {} release-artifacts/ \;
 
@@ -93,8 +97,13 @@ jobs:
           }
           JSON
 
-          if ! compgen -G "release-artifacts/*.apk" > /dev/null; then
-            echo "No APK artifacts found." >&2
+          if ! compgen -G "release-artifacts/*debug*.apk" > /dev/null; then
+            echo "No debug APK artifacts found." >&2
+            exit 1
+          fi
+
+          if ! compgen -G "release-artifacts/*release*.apk" > /dev/null; then
+            echo "No release APK artifacts found." >&2
             exit 1
           fi
 
