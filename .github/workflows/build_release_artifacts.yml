@@ -1,0 +1,57 @@
+name: Build and Release Android Artifacts
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Build release artifacts
+        run: |
+          ./gradlew :app:assembleRelease :Bcore:assembleRelease
+
+      - name: Collect generated files
+        run: |
+          mkdir -p release-artifacts
+          find app/build/outputs/apk/release -name '*.apk' -exec cp {} release-artifacts/ \;
+          find Bcore/build/outputs/aar -name '*release.aar' -exec cp {} release-artifacts/ \;
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-artifacts
+          path: release-artifacts/*
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true
