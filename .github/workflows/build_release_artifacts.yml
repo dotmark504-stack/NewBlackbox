@@ -1,7 +1,9 @@
-name: Build and Release Android Artifacts
+name: Build and Release Android 14 Artifacts
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -16,6 +18,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -27,31 +31,99 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+      - name: Install Android 14 build + guest image dependencies
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "system-images;android-34;google_apis;x86_64"
 
-      - name: Grant execute permission
-        run: chmod +x gradlew
+      - name: Determine release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          BASE_VERSION_NAME=$(sed -n "s/.*versionName = \"\(.*\)\".*/\1/p" build.gradle | head -n1)
+          BUILD_DATE=$(date -u +%Y%m%d)
+          SECURITY_PATCH=$(date -u +%Y-%m-05)
+          VERSION_NAME="${BASE_VERSION_NAME}-a14.${BUILD_DATE}.${GITHUB_RUN_NUMBER}"
+          VERSION_CODE="$(date -u +%y%m%d)${GITHUB_RUN_NUMBER}"
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME="v${VERSION_NAME}"
+          fi
+
+          {
+            echo "android_release=14"
+            echo "android_sdk=34"
+            echo "security_patch=${SECURITY_PATCH}"
+            echo "version_name=${VERSION_NAME}"
+            echo "version_code=${VERSION_CODE}"
+            echo "tag_name=${TAG_NAME}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build release artifacts
         run: |
-          ./gradlew :app:assembleRelease :Bcore:assembleRelease
+          set -euo pipefail
+          ./gradlew --no-daemon clean :app:assembleRelease :Bcore:assembleRelease \
+            -PciVersionName="${{ steps.meta.outputs.version_name }}" \
+            -PciVersionCode="${{ steps.meta.outputs.version_code }}"
 
-      - name: Collect generated files
+      - name: Collect and package generated files
         run: |
-          mkdir -p release-artifacts
+          set -euo pipefail
+          mkdir -p release-artifacts/guest-image
+
           find app/build/outputs/apk/release -name '*.apk' -exec cp {} release-artifacts/ \;
           find Bcore/build/outputs/aar -name '*release.aar' -exec cp {} release-artifacts/ \;
+
+          cat > release-artifacts/guest-image/android14-guest-image-metadata.json <<JSON
+          {
+            "android_release": "${{ steps.meta.outputs.android_release }}",
+            "android_sdk": "${{ steps.meta.outputs.android_sdk }}",
+            "security_patch": "${{ steps.meta.outputs.security_patch }}",
+            "system_image": "system-images;android-34;google_apis;x86_64",
+            "version_name": "${{ steps.meta.outputs.version_name }}",
+            "version_code": "${{ steps.meta.outputs.version_code }}",
+            "generated_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSON
+
+          if ! compgen -G "release-artifacts/*.apk" > /dev/null; then
+            echo "No APK artifacts found." >&2
+            exit 1
+          fi
+
+          if ! compgen -G "release-artifacts/*release.aar" > /dev/null; then
+            echo "No release AAR artifacts found." >&2
+            exit 1
+          fi
+
+          tar -czf "release-artifacts/newblackbox-android14-${{ steps.meta.outputs.version_name }}.tar.gz" \
+            -C release-artifacts .
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-release-artifacts
+          name: android14-release-artifacts
           path: release-artifacts/*
 
-      - name: Publish GitHub Release assets
+      - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: NewBlackbox Android 14 ${{ steps.meta.outputs.version_name }}
           files: release-artifacts/*
           generate_release_notes: true
+          body: |
+            Automated Android 14 release.
+
+            - Android release: ${{ steps.meta.outputs.android_release }}
+            - Android SDK: ${{ steps.meta.outputs.android_sdk }}
+            - Security patch: ${{ steps.meta.outputs.security_patch }}
+            - Version name: ${{ steps.meta.outputs.version_name }}
+            - Version code: ${{ steps.meta.outputs.version_code }}
