@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
@@ -41,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.edit
 import androidx.viewpager2.widget.ViewPager2
 import com.afollestad.materialdialogs.MaterialDialog
 import com.afollestad.materialdialogs.input.input
@@ -65,6 +65,7 @@ class MainActivity : LoadingActivity() {
 
     private val fragmentList = mutableListOf<AppsFragment>()
     private var currentUser = 0
+    private var isFloatButtonVisible by mutableStateOf(true)
 
     companion object {
         private const val TAG = "MainActivity"
@@ -158,13 +159,15 @@ class MainActivity : LoadingActivity() {
                     )
                 },
                 floatingActionButton = {
-                    FloatingActionButton(onClick = {
-                        onInstallClicked()
-                        scope.launch {
-                            snackBarState.showSnackbar(getString(R.string.add_app))
+                    if (isFloatButtonVisible) {
+                        FloatingActionButton(onClick = {
+                            onInstallClicked()
+                            scope.launch {
+                                snackBarState.showSnackbar(getString(R.string.add_app))
+                            }
+                        }) {
+                            Icon(Icons.Default.Add, contentDescription = getString(R.string.add_app))
                         }
-                    }) {
-                        Icon(Icons.Default.Add, contentDescription = getString(R.string.add_app))
                     }
                 },
                 snackbarHost = { SnackbarHost(hostState = snackBarState) },
@@ -253,6 +256,13 @@ class MainActivity : LoadingActivity() {
                 intent.putExtra("userID", 0)
                 startActivity(intent)
             }
+        }
+    }
+
+    fun showFloatButton(show: Boolean) {
+        if (isFloatButtonVisible == show) return
+        runOnUiThread {
+            isFloatButtonVisible = show
         }
     }
 
