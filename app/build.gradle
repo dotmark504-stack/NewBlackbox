@@ -41,9 +41,14 @@ android {
     }
     buildFeatures {
         viewBinding true
+        compose true
     }
     kotlinOptions {
         jvmTarget = '21'
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = '1.5.13'
     }
 
     applicationVariants.configureEach { variant ->
@@ -61,6 +66,12 @@ dependencies {
     implementation libs.material
     implementation libs.constraintlayout
     implementation libs.core.ktx
+    implementation libs.activity.compose
+    implementation platform(libs.compose.bom)
+    implementation libs.compose.ui
+    implementation libs.compose.ui.tooling.preview
+    implementation libs.compose.material3
+    implementation libs.compose.material.icons.extended
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
